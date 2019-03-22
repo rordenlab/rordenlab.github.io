@@ -77,6 +77,7 @@
         }
 
         .divider,
+        .linker,
         .overlay {
             border-top: 1px solid grey;
         }
@@ -106,7 +107,7 @@
                 <div class="dropdown-content">
                     <a class="viewBtn" id="Open">Open</a>
                     <a class="viewBtn" id="SaveBitmap">Screen Shot</a>
-                    <a class="divider" id="About">About</a>
+                    <a class="linker" href="https://github.com/rordenlab/MRIcroWeb">About</a>
                 </div>
             </li>
             <li class="dropdown">
@@ -129,6 +130,8 @@
                     <a class="viewBtn" id="!Inferno">Inferno</a>
                     <a class="divider" id="BackColor">Background Color</a>
                     <a class="viewBtn" id="ChangeContrast">Adjust brightness and contrast</a>
+                    <a class="viewBtn" id="OpacityInc">Foggier Edges</a>
+                    <a class="viewBtn" id="OpacityDec">Softer Edges</a>
                 </div>
             </li>
             <li class="dropdown">
@@ -174,11 +177,35 @@ var HEIGHT = 320;
 canvas = document.getElementById("glcanvas");
 var hdr;
 var img;
+var colorName = "";
+var colorOpacity = 2;
 const center = vec3.set(vec3.create(), 0.5, 0.5, 0.5);
 var openDialog = document.createElement('input');
 openDialog.type = 'file';
 openDialog.onchange = e => {
 	selectVolume(e.target.files[0], false);
+}
+document.addEventListener("keydown", function(evt) {
+	if (evt.key == "z")  adjustOpacity(0.9);
+	if (evt.key == "a") adjustOpacity(1.1);
+	if (evt.key == "w") adjustQuality(1.1);
+	if (evt.key == "q")  adjustQuality(0.9);
+});
+
+function adjustQuality(scale) {
+		samplingRate = samplingRate * scale;
+		samplingRate = Math.min(samplingRate, 10.0);
+		samplingRate = Math.max(samplingRate, 0.7);
+		gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
+		console.log('quality ', samplingRate);
+}
+
+function adjustOpacity(scale) {
+		colorOpacity = colorOpacity * scale;
+		colorOpacity = Math.min(colorOpacity, 10.0);
+		colorOpacity = Math.max(colorOpacity, 0.1);
+		selectColormap(colorName);
+		console.log('opacity ', colorOpacity);
 }
 
 var loadVolume = function(url, isURL, onload) {
@@ -393,7 +420,7 @@ function makeLut(Rs, Gs, Bs, As, Is) {
 			k++;
 			lut[k] = Bs[i] + f * (Bs[i+1]- Bs[i]); //Blue
 			k++;
-			lut[k] = As[i] + f * (As[i+1]- As[i]); //Alpha
+			lut[k] = (As[i] + f * (As[i+1]- As[i])) * colorOpacity; //Alpha
 			k++;
 		}
 	}
@@ -408,6 +435,7 @@ var selectColormap = function(lutName) {
 		lut = makeLut([68,49,53,253],[1,104,183,231],[84,142,121,37],[0,56,80,88],[0,65,192,255]);//viridis
 	if (lutName === "Inferno")
 		lut = makeLut([0,120,237,240],[0,28,105,249],[4,109,37,33],[0,56,80,88],[0,64,192,255]);//inferno
+	colorName = lutName;
 	var colormap = gl.createTexture();
 	gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, colormap);
@@ -521,6 +549,7 @@ function onButtonClick(event) {
 	}
 	if(event.target.id.charAt(0) === '!') { //load color scheme
 		s = event.target.id.substr(1);
+		colorOpacity = 2.0;
 		selectColormap(s);
 		return;
 	}
@@ -535,6 +564,14 @@ function onButtonClick(event) {
 	}
 	if (event.target.id === "About") {
 		alert("MRIcroGL for Web by Chris Rorden. Using Will Usher's Volume Raycaster");
+		return;
+	}
+	if (event.target.id === "OpacityInc") {
+		adjustOpacity(1.2);
+		return;
+	}
+	if (event.target.id === "OpacityDec") {
+		adjustOpacity(0.8);
 		return;
 	}
 	if (event.target.id === "BackColor") {
