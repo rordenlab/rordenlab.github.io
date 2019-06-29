@@ -144,20 +144,29 @@
             <li class="dropdown">
                 <a href="javascript:void(0)" class="dropbtn">Shader</a>
                 <div class="dropdown-content">
-                    <a class="viewBtn" id="^Standard">Standard</a>
+                    <a class="viewBtn" id="^Standard">Volume Only</a>
                     <a class="viewBtn" id="^Lighting">Lighting</a>
                     <a class="viewBtn" id="^MIP">Maximum Intensity</a>
                     <a class="viewBtn" id="^Gradients">Gradients</a>
+                    <a class="viewBtn" id="^MatCap">MatCap</a>
+                </div>
+            </li>
+            <li class="dropdown">
+                <a href="javascript:void(0)" class="dropbtn">MatCap</a>
+                <div class="dropdown-content">
+                    <a class="viewBtn" id="#0">White</a>
+                    <a class="viewBtn" id="#1">Clay</a>
+                    <a class="viewBtn" id="#2">Gold</a>
+                    <a class="viewBtn" id="#3">Red</a>
+                    <a class="viewBtn" id="#4">Cortex</a>
                 </div>
             </li>
             <li class="dropdown">
                 <a href="javascript:void(0)" class="dropbtn">Examples</a>
                 <div class="dropdown-content">
                     <a class="viewBtn" id="_spm152.nii.gz">spm</a>
-                    <a class="viewBtn" id="_avg152T1_LR_nifti.nii.gz">avg</a>
                     <a class="viewBtn" id="_Chris_MRA.nii.gz">MRA</a>
                     <a class="viewBtn" id="_Chris_T1.nii.gz">T1</a>
-                    <a class="viewBtn" id="_Chris_T2.nii.gz">T2</a>
                 </div>
             </li>
         </ul>
@@ -187,11 +196,11 @@ var blurShader = null;
 var sobelShader = null;
 var volumeTexture = null;
 var gradientTexture = null;
-var colormap = null;
+var matcapTexture = null;
+var colormapTexture = null;
 var proj = null;
 var vao = null;
 var vbo = null;
-//var tex = null;
 var camera = null;
 var projView = null;
 var newVolumeUpload = true;
@@ -219,23 +228,66 @@ document.addEventListener("keydown", function(evt) {
 if (isDrawOnDemand)
 	document.addEventListener('cameraRedraw', e => glDraw() );
 
+var selectJpeg = function(jpegName) {
+  var matCapImage = null;
+  matCapImage = new Image();
+  //console.log('loading ', jpegName);
+  matCapImage.src = jpegName;  // MUST BE SAME DOMAIN!!!
+  matCapImage.onload = function() {
+  	//console.log('matcap resolution ', matCapImage.width, '<<<', matCapImage.height);
+	if (matcapTexture !== null)
+	gl.deleteTexture(matcapTexture); //release ');
+		matcapTexture = gl.createTexture();
+	gl.activeTexture(gl.TEXTURE3);
+	gl.bindTexture(gl.TEXTURE_2D, matcapTexture);
+	// Set the parameters so we can render any size image.
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	// Upload the image into the texture.
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, matCapImage);
+  }
+} // selectJpeg()
+
+var selectColormap = function(lutName) {
+    var lut = makeLut([0, 255], [0, 255], [0,255], [0,128],[0,255]); //gray
+    if (lutName === "Plasma")
+		lut = makeLut([13, 156, 237, 240],[8, 23, 121, 249],[135, 158, 83, 33],[0, 56, 80, 88], [0, 64, 192, 255]); //plasma
+	if (lutName === "Viridis")
+		lut = makeLut([68,49,53,253],[1,104,183,231],[84,142,121,37],[0,56,80,88],[0,65,192,255]);//viridis
+	if (lutName === "Inferno")
+		lut = makeLut([0,120,237,240],[0,28,105,249],[4,109,37,33],[0,56,80,88],[0,64,192,255]);//inferno
+	colorName = lutName;
+	if (colormapTexture !== null)
+		gl.deleteTexture(colormapTexture); //release colormap');
+	colormapTexture = gl.createTexture();
+	gl.activeTexture(gl.TEXTURE1);
+	gl.bindTexture(gl.TEXTURE_2D, colormapTexture);
+	gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 256, 1);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1,gl.RGBA, gl.UNSIGNED_BYTE, lut);
+} // selectColormap()
+
 function adjustQuality(scale) {
-		samplingRate = samplingRate * scale;
-		samplingRate = Math.min(samplingRate, 10.0);
-		samplingRate = Math.max(samplingRate, 0.7);
-		gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
-		console.log('quality ', samplingRate);
-		if (isDrawOnDemand) glDraw();
-}
+	samplingRate = samplingRate * scale;
+	samplingRate = Math.min(samplingRate, 10.0);
+	samplingRate = Math.max(samplingRate, 0.7);
+	gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
+	console.log('quality ', samplingRate);
+	if (isDrawOnDemand) glDraw();
+} // adjustQuality()
 
 function adjustOpacity(scale) {
-		colorOpacity = colorOpacity * scale;
-		colorOpacity = Math.min(colorOpacity, 10.0);
-		colorOpacity = Math.max(colorOpacity, 0.1);
-		selectColormap(colorName);
-		console.log('opacity ', colorOpacity);
-		if (isDrawOnDemand) glDraw();
-}
+	colorOpacity = colorOpacity * scale;
+	colorOpacity = Math.min(colorOpacity, 10.0);
+	colorOpacity = Math.max(colorOpacity, 0.1);
+	selectColormap(colorName);
+	console.log('opacity ', colorOpacity);
+	if (isDrawOnDemand) glDraw();
+} // adjustOpacity()
 
 var loadVolume = function(url, isURL, onload) {
 	if (!isURL) {
@@ -282,7 +334,7 @@ var loadVolume = function(url, isURL, onload) {
 		}
 	};
 	req.send();
-} //loadVolume()
+} // loadVolume()
 
 function bindBlankGL() {
 	let texR = gl.createTexture();
@@ -295,7 +347,7 @@ function bindBlankGL() {
 	gl.pixelStorei( gl.UNPACK_ALIGNMENT, 1 )
 	gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA8, hdr.dims[1], hdr.dims[2], hdr.dims[3]);
 	return texR;
-}
+} // bindBlankGL()
 
 function gradientGL() {
 	var faceStrip = [0,0,0, 0,1,0, 1,0,0, 1,1,0];
@@ -319,7 +371,6 @@ function gradientGL() {
 	gl.uniform1f(blurShader.uniforms["dX"], 0.7/ hdr.dims[1]);
 	gl.uniform1f(blurShader.uniforms["dY"], 0.7/ hdr.dims[2]);
 	gl.uniform1f(blurShader.uniforms["dZ"], 0.7/ hdr.dims[3]);
-
 	gl.bindVertexArray(vao2);
 	for (i = 0; i < (hdr.dims[3]-1); i++) {
 		var coordZ = 1/hdr.dims[3] * (i + 0.5);
@@ -328,7 +379,6 @@ function gradientGL() {
     	gl.clear(gl.DEPTH_BUFFER_BIT);
     	gl.drawArrays(gl.TRIANGLE_STRIP, 0, faceStrip.length / 3);
 	}
-
 	sobelShader.use();
 	gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_3D, tempTex3D);//input texture
@@ -359,48 +409,49 @@ function gradientGL() {
 	gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
 	gl.activeTexture(gl.TEXTURE2);
 	gl.bindTexture(gl.TEXTURE_3D, gradientTexture);
+	gl.activeTexture(gl.TEXTURE3);
+	gl.bindTexture(gl.TEXTURE_2D, matcapTexture); //"matcap"
 	gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-}
+} // gradientGL()
 
-function reportMat(m){
+/*function reportMat(m){
 	console.log("m = [%.2f %.2f %.2f %.2f; %.2f %.2f %.2f %.2f; %.2f %.2f %.2f %.2f; %.2f %.2f %.2f %.2f]",
 		m[0],m[1],m[2],m[3],
 		m[4],m[5],m[6],m[7],
 		m[8],m[9],m[10],m[11],
 		m[12],m[13],m[14],m[15],
-
 		);
-}
+}*/
 
-function glDraw(){
-			gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
-			gl.clearColor(0.0, 0.0, 0.0, 0.0);
-			gl.clear(gl.COLOR_BUFFER_BIT);
-			projView = mat4.mul(projView, proj, camera.camera);
-			gl.uniformMatrix4fv(shader.uniforms["proj_view"], false, projView);
-			//var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
-			var eye = camera.eyePos();
-			gl.uniform3fv(shader.uniforms["eye_pos"], eye);
-			//Lighting
-			//"Head-light" with light at camera location:
-			//gl.uniform3fv(shader.uniforms["light_pos"], eye);
-			//we will place a light directly above the camera, mixing headlight with top light
-			var mx = Math.max( Math.abs(...eye) );
-			up = camera.upDir();
-			var light = eye;
-			light[0] = eye[0] + up[0] * mx;
-			light[1] = eye[1] + up[1] * mx;
-			light[2] = eye[2] + up[2] * mx;
-			gl.uniform3fv(shader.uniforms["light_pos"], light);
-			//draw cube
-			gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
-			// Wait for rendering to actually finish
-			gl.finish();
-			if (takeScreenShot) {
-				takeScreenShot = false;
-				canvas.toBlob(function(b) { saveAs(b, "screen.png"); }, "image/png");
-			}
-}
+function glDraw() {
+	gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
+	gl.clearColor(0.0, 0.0, 0.0, 0.0);
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	projView = mat4.mul(projView, proj, camera.camera);
+	gl.uniformMatrix4fv(shader.uniforms["normal_matrix"], false, camera.camera);
+	gl.uniformMatrix4fv(shader.uniforms["proj_view"], false, projView);
+	var eye = camera.eyePos();
+	gl.uniform3fv(shader.uniforms["eye_pos"], eye);
+	//Lighting
+	//"Head-light" with light at camera location:
+	//gl.uniform3fv(shader.uniforms["light_pos"], eye);
+	//we will place a light directly above the camera, mixing headlight with top light
+	var mx = Math.max( Math.abs(...eye) );
+	up = camera.upDir();
+	var light = eye;
+	light[0] = eye[0] + up[0] * mx;
+	light[1] = eye[1] + up[1] * mx;
+	light[2] = eye[2] + up[2] * mx;
+	gl.uniform3fv(shader.uniforms["light_pos"], light);
+	//draw cube
+	gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
+	// Wait for rendering to actually finish
+	gl.finish();
+	if (takeScreenShot) {
+		takeScreenShot = false;
+		canvas.toBlob(function(b) { saveAs(b, "screen.png"); }, "image/png");
+	}
+} // glDraw()
 
 function updateVolume() { //load volume or change contrast
 	//convert data to 8-bit image
@@ -486,7 +537,7 @@ function updateVolume() { //load volume or change contrast
 	}
 	gradientGL();
 	glDraw();
-} //updateVolume()
+} // updateVolume()
 
 var selectVolume = function(url, isURL = true) {
 	loadVolume(url, isURL, function(file, xhdr, ximg) {
@@ -572,27 +623,6 @@ function makeLut(Rs, Gs, Bs, As, Is) {
     return lut;
 } // makeLut()
 
-var selectColormap = function(lutName) {
-    var lut = makeLut([0, 255], [0, 255], [0,255], [0,128],[0,255]); //gray
-    if (lutName === "Plasma")
-		lut = makeLut([13, 156, 237, 240],[8, 23, 121, 249],[135, 158, 83, 33],[0, 56, 80, 88], [0, 64, 192, 255]); //plasma
-	if (lutName === "Viridis")
-		lut = makeLut([68,49,53,253],[1,104,183,231],[84,142,121,37],[0,56,80,88],[0,65,192,255]);//viridis
-	if (lutName === "Inferno")
-		lut = makeLut([0,120,237,240],[0,28,105,249],[4,109,37,33],[0,56,80,88],[0,64,192,255]);//inferno
-	colorName = lutName;
-	if (colormap !== null)
-		gl.deleteTexture(colormap); //release colormap');
-	colormap = gl.createTexture();
-	gl.activeTexture(gl.TEXTURE1);
-	gl.bindTexture(gl.TEXTURE_2D, colormap);
-	gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 256, 1);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-	gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1,gl.RGBA, gl.UNSIGNED_BYTE, lut);
-} // selectColormap()
-
 window.onload = function(){
 	//menu items
 	var buttons = document.getElementsByClassName("viewBtn");
@@ -634,7 +664,7 @@ window.onload = function(){
 	sobelShader.use();
 	blurShader = new Shader(blurVertShader, blurFragShader);
 	blurShader.use();
-	setShader(1); //Lighting shader
+	setShader(4); //Matcap shader
 	// Setup required OpenGL state for drawing the back faces and
 	// composting with the background color
 	gl.enable(gl.CULL_FACE);
@@ -644,12 +674,16 @@ window.onload = function(){
 	//gl.clearColor(1, 0.5, 0.5, 3);
 	// Load the default colormap and upload it, after which we
 	// load the default volume.
+	selectJpeg('0.jpg')
 	selectColormap("Gray");
-	selectVolume("spmSmall.nii.gz");
+	//selectVolume("spmSmall.nii.gz");
+	selectVolume("spm152.nii.gz");
 } // window.onload()
 
 function setShader(shaderInt) { //0=default, 1=lighting, 2=Maximum Intensity
-	if (shaderInt === 3)
+	if (shaderInt === 4)
+		shader = new Shader(vertShader, fragShaderMatCap);
+	else if (shaderInt === 3)
 		shader = new Shader(vertShader, fragShaderGradients);
 	else if (shaderInt === 2)
 		shader = new Shader(vertShader, fragShaderMIP);
@@ -661,9 +695,9 @@ function setShader(shaderInt) { //0=default, 1=lighting, 2=Maximum Intensity
 	gl.uniform1i(shader.uniforms["volume"], 0);
 	gl.uniform1i(shader.uniforms["colormap"], 1);
 	gl.uniform1i(shader.uniforms["gradients"], 2);
+	gl.uniform1i(shader.uniforms["matcap"], 3); //matcapTexture
 	gl.uniform1f(shader.uniforms["dt_scale"], 1.0);
-}
-
+} // setShader()
 
 function onWindowResize(isInit = false) {
 	WIDTH = canvas.clientWidth;
@@ -687,7 +721,7 @@ function onWindowResize(isInit = false) {
 	//samplingRate = 1.0;
 	//gl.uniform1f(shader.uniforms["dt_scale"], samplingRate);
 	if ((shader !==null) && (isDrawOnDemand)) glDraw();
-} //onWindowResize()
+} // onWindowResize()
 
 function onButtonClick(event) {
 	var el = this.parentNode;
@@ -720,6 +754,8 @@ function onButtonClick(event) {
 			setShader(2);
 		else if (s === "Gradients")
 			setShader(3);
+		else if (s === "MatCap")
+			setShader(4);
 		else
 			setShader(0);
         updateVolume();
@@ -734,6 +770,14 @@ function onButtonClick(event) {
 		if (isDrawOnDemand) glDraw();
 		return;
 	}
+	if(event.target.id.charAt(0) === '#') { //load color scheme
+		s = event.target.id.substr(1)+'.jpg';
+		colorOpacity = 2.0;
+		selectJpeg(s);
+		if (isDrawOnDemand) glDraw();
+		return;
+	}
+
 	if(event.target.id.charAt(0) === '_') { //load NIfTI volume
 		s = event.target.id.substr(1);
 		selectVolume(s);
@@ -803,11 +847,11 @@ function onButtonClick(event) {
 		return;
 	}
 	console.log('Unknown menu item ', event.target.id);
-} //onButtonClick()
+} // onButtonClick()
 
 function allowDrop(ev) {
   ev.preventDefault();
-}
+} // allowDrop()
 
 function drag(ev) {
   ev.dataTransfer.setData("text", ev.target.id);
@@ -817,7 +861,7 @@ function drop(ev) {
   ev.preventDefault();
   console.log(ev.dataTransfer.files[0])
   selectVolume(ev.dataTransfer.files[0], false);
-}
+} // drag()
 
 </script>
 </html>
